@@ -106,8 +106,8 @@
     <string name="track_unknown">Unknown track</string>
     <string name="track_codec_info">Codec: %1$s\n</string>
     <string name="track_language_info">Language: %1$s\n</string>
-    <string name="volume">Volume&#160;</string>
-    <string name="brightness">Brightness&#160;</string>
+    <string name="volume">Volume</string>
+    <string name="brightness">Brightness</string>
 
     <plurals name="track_channels_info_quantity">
         <item quantity="one">1 channel\n</item>
@@ -141,6 +141,9 @@
     <string name="plus" translatable="false">+</string>
     <string name="minus" translatable="false">&#8722;</string>
 
+    <string name="encountered_error_title">Playback error</string>
+    <string name="encountered_error_message">VLC encountered an error with this media.\nPlease try refreshing the media library.</string>
+
     <!-- About -->
     <string name="app_name_full">VLC for Android™</string>
     <string name="licence">License</string>
@@ -155,46 +158,60 @@
 
     <!-- Preferences -->
     <string name="preferences">Preferences</string>
-    <string name="main_prefs_category">Main</string>
+    <string name="library_prefs_category">Media library</string>
+    <string name="directories_summary">Select directories to include in the media library</string>
     <string name="add_custom_path">Add a custom path</string>
     <string name="add_custom_path_description">Enter additional custom directory to scan:</string>
     <string name="remove_custom_path">Remove custom path</string>
-    <string name="privacy_prefs_category">Privacy</string>
-    <string name="clear_history">Clear search history</string>
-    <string name="advanced_prefs_category">Advanced</string>
-    <string name="enable_iomx">Enable hardware accelerated decoding</string>
-    <string name="advanced_debugging">Advanced debugging</string>
-    <string name="quit">Quit application</string>
-    <string name="clear_media_db">Clear media database</string>
-    <string name="media_db_cleared">Media database cleared!</string>
-    <string name="set_locale">Set locale</string>
-    <string name="set_locale_detail">Leave blank to reset</string>
-    <string name="set_locale_popup">Quit and reset VLC for changes to take effect.</string>
-    <string name="chroma_format">Force chroma</string>
-    <string name="chroma_format_detail">DO NOT ACTIVATE!!! May not work with all devices. 2.3 and later only.</string>
-    <string name="detect_headset">Detect headset</string>
-    <string name="detect_headset_detail">Pause on headset removed; resume on headset inserted</string>
-    <string name="steal_remote_control">Exclusive headset remote control</string>
-    <string name="steal_remote_control_detail">Avoid conflicts by stealing the remote control from other apps. This prevents dialing on double click on HTC phones.</string>
-    <string name="enable_wheel_bar">Enable wheel bar</string>
-    <string name="enable_gesture_brightness">Enable brightness gesture</string>
-    <string name="screen_orientation">Screen orientation</string>
+    <string name="main_prefs_category">Main</string>
+    <string name="screen_orientation">Video screen orientation</string>
     <string name="screen_orientation_sensor">Automatic (sensor)</string>
     <string name="screen_orientation_start_lock">Locked at start</string>
     <string name="screen_orientation_portrait">Portrait</string>
     <string name="screen_orientation_landscape">Landscape</string>
     <string name="screen_orientation_reverse_portrait">Reverse portrait</string>
     <string name="screen_orientation_reverse_landscape">Reverse landscape</string>
-    <string name="subtitles_prefs_category">Subtitles</string>
-    <string name="subtitles_text_encoding">Text encoding</string>
+    <string name="enable_brightness_gesture">Enable brightness gesture</string>
+    <string name="enable_brightness_gesture_summary">Control brightness by gesture during video playback</string>
+    <string name="enable_headset_detection">Detect headset</string>
+    <string name="enable_headset_detection_summary">Pause on headset removal; resume on headset insertion</string>
+    <string name="enable_wheel_bar">Enable wheel bar</string>
+    <string name="enable_wheel_bar_summary">Alternate-style seek bar for the video interface</string>
+    <string name="enable_steal_remote_control">Exclusive headset remote control</string>
+    <string name="enable_steal_remote_control_summary">Avoid conflicts by stealing the remote control from other apps. This prevents dialing on double click on HTC phones.</string>
+    <string name="performance_prefs_category">Performance</string>
+    <string name="chroma_format">Force video chroma</string>
+    <string name="chroma_format_summary">RGB 32-bit: default chroma\nRGB 16-bit: better performance but lower quality\nYUV: best performance but does not work on all devices. Android 2.3 and later only.</string>
+    <string name="enable_iomx">Hardware accelerated decoding</string>
+    <string name="enable_iomx_summary">Improves performance, but may not work with all devices.</string>
+    <string name="enable_time_stretching_audio">Time-stretching audio</string>
+    <string name="enable_time_stretching_audio_summary">Speed up and slow down audio without changing the pitch (requires a fast device).</string>
+    <string name="other_prefs_category">Other</string>
+    <string name="clear_history">Clear search history</string>
+    <string name="clear_media_db">Clear media database</string>
+    <string name="media_db_cleared">Media database cleared!</string>
+    <string name="subtitles_text_encoding">Subtitle text encoding</string>
+
+    <string name="debug_logs">Debug logs</string>
+    <string name="start_logging">Start logging</string>
+    <string name="stop_logging">Stop logging</string>
+    <string name="clear_log">Clear log</string>
+    <string name="copy_to_clipboard">Copy to clipboard</string>
+    <string name="copied_to_clipboard">Copied log to clipboard.</string>
+
+    <string name="advanced_prefs_category">Advanced</string>
+    <string name="advanced_debugging">Advanced debugging</string>
     <string name="aout">Audio output</string>
+    <string name="aout_summary">Change the method that VLC uses to output audio.</string>
     <string name="aout_audiotrack">AudioTrack (native)</string>
     <string name="aout_audiotrack_java">AudioTrack (Java)</string>
     <string name="aout_opensles">OpenSL ES</string>
-    <string name="enable_time_stretching_audio">Enable time-stretching audio</string>
-    <string name="enable_time_stretching_audio_detail">Speed up and slow down audio without changing the pitch (requires a fast device)</string>
     <string name="enable_verbose_mode">Verbose</string>
-    <string name="enable_verbose_mode_detail">Increase the verbosity (logcat)</string>
+    <string name="enable_verbose_mode_summary">Increase the verbosity (logcat)</string>
+    <string name="set_locale">Set locale</string>
+    <string name="set_locale_detail">Leave blank to reset</string>
+    <string name="set_locale_popup">Quit and reset VLC for changes to take effect.</string>
+    <string name="quit">Quit application</string>
 
     <string-array name="screen_orientation_list">
         <item>@string/screen_orientation_sensor</item>

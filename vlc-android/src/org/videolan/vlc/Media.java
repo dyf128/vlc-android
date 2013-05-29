@@ -114,7 +114,7 @@ public class Media implements Comparable<Media> {
     private String mFilename;
     private long mTime = 0;
     private int mAudioTrack = -1;
-    private int mSpuTrack = -1;
+    private int mSpuTrack = -2;
     private long mLength = 0;
     private int mType;
     private int mWidth = 0;
@@ -355,8 +355,10 @@ public class Media implements Comparable<Media> {
     public String getGenre() {
         if(mGenre == VLCApplication.getAppContext().getString(R.string.unknown_genre))
             return mGenre;
-        else /* Make genres case insensitive via normalisation */
+        else if( mGenre.length() > 1)/* Make genres case insensitive via normalisation */
             return Character.toUpperCase(mGenre.charAt(0)) + mGenre.substring(1).toLowerCase();
+        else
+            return mGenre;
     }
 
     public String getCopyright() {

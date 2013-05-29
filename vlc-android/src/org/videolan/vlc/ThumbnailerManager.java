@@ -79,7 +79,6 @@ public class ThumbnailerManager implements Runnable {
         isStopping = false;
         if (mThread == null || mThread.getState() == State.TERMINATED) {
             mVideoGridFragment = videoGridFragment;
-            mVideoGridFragment.setThumbnailerManager(this);
             mThread = new Thread(this);
             mThread.start();
         }
@@ -162,8 +161,8 @@ public class ThumbnailerManager implements Runnable {
             //Log.i(TAG, "create new bitmap for: " + item.getName());
             byte[] b = mLibVlc.getThumbnail(item.getLocation(), width, height);
 
-            if (b == null) {// We were not able to create a thumbnail for this item.
-                item.setPicture(mContext, null);
+            if (b == null) {// We were not able to create a thumbnail for this item, store a dummy
+                item.setPicture(mContext, Bitmap.createBitmap(1, 1, Config.ARGB_8888));
                 continue;
             }
 
@@ -191,7 +190,6 @@ public class ThumbnailerManager implements Runnable {
         /* cleanup */
         MainActivity.hideProgressBar(mContext);
         MainActivity.clearTextInfo(mContext);
-        mVideoGridFragment.setThumbnailerManager(null);
         mVideoGridFragment = null;
         Log.d(TAG, "Thumbnailer stopped");
     }

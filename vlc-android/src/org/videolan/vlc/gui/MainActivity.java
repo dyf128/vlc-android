@@ -26,12 +26,10 @@ import org.videolan.vlc.LibVLC;
 import org.videolan.vlc.LibVlcException;
 import org.videolan.vlc.MediaLibrary;
 import org.videolan.vlc.R;
-import org.videolan.vlc.ThumbnailerManager;
 import org.videolan.vlc.Util;
 import org.videolan.vlc.VLCCallbackTask;
 import org.videolan.vlc.gui.SidebarAdapter.SidebarEntry;
 import org.videolan.vlc.gui.video.VideoListAdapter;
-import org.videolan.vlc.gui.video.VideoGridFragment;
 import org.videolan.vlc.interfaces.ISortable;
 import org.videolan.vlc.widget.AudioMiniPlayer;
 
@@ -93,7 +91,6 @@ public class MainActivity extends SherlockFragmentActivity {
     private SidebarAdapter mSidebarAdapter;
     private AudioMiniPlayer mAudioPlayer;
     private AudioServiceController mAudioController;
-    private ThumbnailerManager mThumbnailerManager;
 
     private View mInfoLayout;
     private ProgressBar mInfoProgress;
@@ -200,8 +197,8 @@ public class MainActivity extends SherlockFragmentActivity {
                 SidebarAdapter.SidebarEntry entry = (SidebarEntry) listView.getItemAtPosition(position);
                 Fragment current = getSupportFragmentManager().findFragmentById(R.id.fragment_placeholder);
 
-                if(current == null || current.getTag() == entry.id) { /* Already selected */
-                    mMenu.showAbove();
+                if(current == null || current.getTag().equals(entry.id)) { /* Already selected */
+                    mMenu.showContent();
                     return;
                 }
 
@@ -214,12 +211,33 @@ public class MainActivity extends SherlockFragmentActivity {
                     getSupportFragmentManager().popBackStack();
                 }
 
+                /**
+                 * Do not move this getFragment("audio")!
+                 * This is to ensure that if audio is not already loaded, it
+                 * will be loaded ahead of the detach/attach below.
+                 * Otherwise if you add() a fragment after an attach/detach,
+                 * it will take over the placeholder and you will end up with
+                 * the audio fragment when some other fragment should be there.
+                 */
+                Fragment audioFragment = getFragment("audio");
+
                 FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
                 ft.detach(current);
                 ft.attach(getFragment(entry.id));
                 ft.commit();
                 mCurrentFragment = entry.id;
-                mMenu.showAbove();
+
+                /*
+                 * Set user visibility hints to work around weird Android
+                 * behaviour of duplicate context menu events.
+                 */
+                current.setUserVisibleHint(false);
+                getFragment(mCurrentFragment).setUserVisibleHint(true);
+                // HACK ALERT: Set underlying audio browser to be invisible too.
+                if(current.getTag().equals("tracks"))
+                    audioFragment.setUserVisibleHint(false);
+
+                mMenu.showContent();
             }
         });
 
@@ -246,7 +264,7 @@ public class MainActivity extends SherlockFragmentActivity {
             handler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    mMenu.showBehind();
+                    mMenu.showMenu();
                 }
             }, 500);
         }
@@ -260,10 +278,6 @@ public class MainActivity extends SherlockFragmentActivity {
 
         /* Reload the latest preferences */
         reloadPreferences();
-
-        /* Load the thumbnailer */
-        mThumbnailerManager = new ThumbnailerManager(this,
-                getWindowManager().getDefaultDisplay());
     }
 
     private void changeMenuOffset() {
@@ -289,13 +303,11 @@ public class MainActivity extends SherlockFragmentActivity {
             MediaLibrary.getInstance(this).loadMediaItems(this);
     }
 
-
-
     @Override
     protected void onResumeFragments() {
         super.onResumeFragments();
 
-        /* Restore last view */
+        // Figure out if currently-loaded fragment is a top-level fragment.
         Fragment current = getSupportFragmentManager()
                 .findFragmentById(R.id.fragment_placeholder);
         boolean found = false;
@@ -309,13 +321,42 @@ public class MainActivity extends SherlockFragmentActivity {
         } else {
             found = true;
         }
-        /* Don't call replace() on a non-sidebar fragment, since replace() will
-         * remove() the currently displayed fragment and replace it with a
-         * blank screen.
+
+        mSidebarAdapter.lockSemaphore();
+        /**
+         * Let's see if Android recreated anything for us in the bundle.
+         * Prevent duplicate creation of fragments, since mSidebarAdapter might
+         * have been purged (losing state) when this activity was killed.
          */
-        if(found) {
+        for(int i = 0; i < SidebarAdapter.entries.size(); i++) {
+            String fragmentTag = SidebarAdapter.entries.get(i).id;
+            Fragment fragment = getSupportFragmentManager().findFragmentByTag(fragmentTag);
+            if(fragment != null) {
+                Log.d(TAG, "Restoring automatically recreated fragment \"" + fragmentTag + "\"");
+                mSidebarAdapter.restoreFragment(fragmentTag, fragment);
+            }
+        }
+        mSidebarAdapter.unlockSemaphore();
+
+        /**
+         * Restore the last view.
+         *
+         * Replace:
+         * - null fragments (freshly opened Activity)
+         * - Wrong fragment open AND currently displayed fragment is a top-level fragment
+         *
+         * Do not replace:
+         * - Non-sidebar fragments.
+         * It will try to remove() the currently displayed fragment
+         * (i.e. tracks) and replace it with a blank screen. (stuck menu bug)
+         */
+        if(current == null || (!current.getTag().equals(mCurrentFragment) && found)) {
+            Log.d(TAG, "Reloading displayed fragment");
+            Fragment ff = getFragment(mCurrentFragment);
             FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
-            ft.replace(R.id.fragment_placeholder, getFragment(mCurrentFragment));
+            if(current != null)
+                ft.detach(current);
+            ft.attach(ff);
             ft.commit();
         }
     }
@@ -331,8 +372,6 @@ public class MainActivity extends SherlockFragmentActivity {
         mScanNeeded = MediaLibrary.getInstance(this).isWorking();
         /* Stop scanning for files */
         MediaLibrary.getInstance(this).stop();
-        /* Stop the thumbnailer */
-        mThumbnailerManager.stop();
         /* Save the tab status in pref */
         SharedPreferences.Editor editor = getSharedPreferences("MainActivity", MODE_PRIVATE).edit();
         editor.putString("fragment", mCurrentFragment);
@@ -349,8 +388,6 @@ public class MainActivity extends SherlockFragmentActivity {
         try {
             unregisterReceiver(messageReceiver);
         } catch (IllegalArgumentException e) {}
-        if (mThumbnailerManager != null)
-            mThumbnailerManager.clearJobs();
     }
 
     @Override
@@ -362,9 +399,9 @@ public class MainActivity extends SherlockFragmentActivity {
 
     @Override
     public void onBackPressed() {
-        if(mMenu.isBehindShowing()) {
+        if(mMenu.isMenuShowing()) {
             /* Close the menu first */
-            mMenu.showAbove();
+            mMenu.showContent();
             return;
         }
         // If it's the directory view, a "backpressed" action shows a parent.
@@ -382,15 +419,17 @@ public class MainActivity extends SherlockFragmentActivity {
     {
         Fragment fragment = mSidebarAdapter.fetchFragment(id);
 
-        if (!fragment.isAdded())
+        // Prevent fragment from being added twice. (IllegalStateException)
+        // See http://stackoverflow.com/questions/13745787/fragment-already-added-support-lib
+        mSidebarAdapter.lockSemaphore();
+        if(!mSidebarAdapter.isFragmentAdded(id)) {
             getSupportFragmentManager()
                 .beginTransaction()
                 .add(R.id.fragment_placeholder, fragment, id)
                 .commitAllowingStateLoss();
-
-        /* Start the thumbnailer */
-        if (id.equals("video"))
-            mThumbnailerManager.start((VideoGridFragment)fragment);
+            mSidebarAdapter.setFragmentAdded(id);
+        }
+        mSidebarAdapter.unlockSemaphore();
 
         return fragment;
     }
@@ -478,10 +517,10 @@ public class MainActivity extends SherlockFragmentActivity {
             	break;
             case android.R.id.home:
                 /* Toggle the sidebar */
-                if(mMenu.isBehindShowing())
-                    mMenu.showAbove();
+                if(mMenu.isMenuShowing())
+                    mMenu.showContent();
                 else
-                    mMenu.showBehind();
+                    mMenu.showMenu();
                 break;
         }
         return super.onOptionsItemSelected(item);
@@ -519,7 +558,7 @@ public class MainActivity extends SherlockFragmentActivity {
                 infoDialog.dismiss();
                 /* and finally open the sliding menu if first run */
                 if (mFirstRun)
-                    mMenu.showBehind();
+                    mMenu.showMenu();
             }
         });
         infoDialog.show();
@@ -618,7 +657,7 @@ public class MainActivity extends SherlockFragmentActivity {
             }
         }
         );
-        b.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+        b.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface arg0, int arg1) {
                 return;

@@ -1,8 +1,8 @@
 /*****************************************************************************
  * DirectoryAdapter.java
  *****************************************************************************
- * Copyright © 2012 VLC authors and VideoLAN
- * Copyright © 2012 Edward Wang
+ * Copyright © 2012-2013 VLC authors and VideoLAN
+ * Copyright © 2012-2013 Edward Wang
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,7 +54,11 @@ public class DirectoryAdapter extends BaseAdapter {
      * Private helper class to implement the directory tree
      */
     public class Node implements Comparable<DirectoryAdapter.Node> {
+        public DirectoryAdapter.Node parent;
         public ArrayList<DirectoryAdapter.Node> children;
+        /**
+         * Name of the file/folder (not full path).
+         */
         String name;
         String visibleName;
         public Boolean isFile;
@@ -68,6 +72,22 @@ public class DirectoryAdapter extends BaseAdapter {
             this.visibleName = _visibleName;
             this.children = new ArrayList<DirectoryAdapter.Node>();
             this.isFile = false;
+            this.parent = null;
+        }
+
+        public void addChildNode(DirectoryAdapter.Node n) {
+            n.parent = this;
+            this.children.add(n);
+        }
+
+        public DirectoryAdapter.Node getChildNode(String directoryName) {
+            for(DirectoryAdapter.Node n : this.children) {
+                if(n.name.equals(directoryName))
+                    return n;
+            }
+            DirectoryAdapter.Node n = new DirectoryAdapter.Node(directoryName);
+            this.addChildNode(n);
+            return n;
         }
 
         public Boolean isFile() {
@@ -132,7 +152,16 @@ public class DirectoryAdapter extends BaseAdapter {
         ImageView icon;
     }
 
-    public void populateNode(DirectoryAdapter.Node n, String path) {
+    private void populateNode(DirectoryAdapter.Node n, String path) {
+        populateNode(n, path, 0);
+    }
+
+    /**
+     * @param n Node to populate
+     * @param path Path to populate
+     * @param depth Depth of iteration (0 = 1st level of nesting, 1 = 2 level of nesting, etc)
+     */
+    private void populateNode(DirectoryAdapter.Node n, String path, int depth) {
         if (path == null) {
             // We're on the storage list
             String storages[] = Util.getMediaDirectories();
@@ -140,8 +169,8 @@ public class DirectoryAdapter extends BaseAdapter {
                 File f = new File(storage);
                 DirectoryAdapter.Node child = new DirectoryAdapter.Node(f.getName(), getVisibleName(f));
                 child.isFile = false;
-                this.populateNode(child, storage);
-                n.children.add(child);
+                this.populateNode(child, storage, 0);
+                n.addChildNode(child);
             }
             return;
         }
@@ -171,7 +200,8 @@ public class DirectoryAdapter extends BaseAdapter {
                 String newPath = sb.toString();
                 sb.setLength(0);
 
-                if (LibVLC.nativeIsPathDirectory(newPath)) {
+                // Don't try to go beyond depth 10 as a safety measure.
+                if (LibVLC.nativeIsPathDirectory(newPath) && depth < 10) {
                     ArrayList<String> files_int = new ArrayList<String>();
                     LibVLC.nativeReadDirectory(newPath, files_int);
                     if(files_int.size() < 8) { /* Optimisation: If there are more than 8
@@ -179,7 +209,7 @@ public class DirectoryAdapter extends BaseAdapter {
                                                    when scaled it is very slow to load */
                         String mCurrentDir_old = mCurrentDir;
                         mCurrentDir = path;
-                        this.populateNode(nss, newPath);
+                        this.populateNode(nss, newPath, depth+1);
                         mCurrentDir = mCurrentDir_old;
                     }
                 } else {
@@ -189,7 +219,7 @@ public class DirectoryAdapter extends BaseAdapter {
                         continue;
                 }
 
-                n.children.add(nss);
+                n.addChildNode(nss);
             }
             Collections.sort(n.children);
         }
@@ -325,22 +355,33 @@ public class DirectoryAdapter extends BaseAdapter {
                         Util.PathToURI(this.mCurrentDir + "/" + directoryName))
                         .normalize().getPath();
                 this.mCurrentDir = Util.stripTrailingSlash(this.mCurrentDir);
+
                 if (this.mCurrentDir.equals(getParentDir(this.mCurrentRoot))) {
                     // Returning on the storage list
                     this.mCurrentDir = null;
                     this.mCurrentRoot = null;
                 }
-            } catch (URISyntaxException e) {
-                e.printStackTrace();
+            } catch(URISyntaxException e) {
+                Log.e(TAG, "URISyntaxException in browse()", e);
+                return false;
+            } catch(NullPointerException e) {
+                Log.e(TAG, "NullPointerException in browse()", e);
                 return false;
             }
         }
 
         Log.d(TAG, "Browsing to " + this.mCurrentDir);
 
-        this.mCurrentNode.children.clear();
-        this.mCurrentNode = new DirectoryAdapter.Node(mCurrentDir);
-        this.populateNode(mCurrentNode, mCurrentDir);
+        if(directoryName.equals(".."))
+            this.mCurrentNode = this.mCurrentNode.parent;
+        else {
+            this.mCurrentNode = this.mCurrentNode.getChildNode(directoryName);
+            if(mCurrentNode.subfolderCount() < 1) {
+                // Clear the ".." entry
+                this.mCurrentNode.children.clear();
+                this.populateNode(mCurrentNode, mCurrentDir);
+            }
+        }
 
         this.notifyDataSetChanged();
         return true;
@@ -379,8 +420,6 @@ public class DirectoryAdapter extends BaseAdapter {
         for(DirectoryAdapter.Node n : this.mCurrentNode.children)
             n.children.clear();
         this.mCurrentNode.children.clear();
-
-        this.mCurrentNode = new DirectoryAdapter.Node(mCurrentDir);
         this.populateNode(mCurrentNode, mCurrentDir);
 
         this.notifyDataSetChanged();

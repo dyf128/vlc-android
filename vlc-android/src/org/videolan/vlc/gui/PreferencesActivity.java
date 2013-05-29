@@ -61,7 +61,7 @@ public class PreferencesActivity extends PreferenceActivity implements OnSharedP
         super.onCreate(savedInstanceState);
         addPreferencesFromResource(R.xml.preferences);
 
-        // Create onClickListen
+        // Directories
         Preference directoriesPref = findPreference("directories");
         directoriesPref.setOnPreferenceClickListener(
                 new OnPreferenceClickListener() {
@@ -75,30 +75,18 @@ public class PreferencesActivity extends PreferenceActivity implements OnSharedP
                     }
                 });
 
-        // Create onClickListen
-        Preference clearHistoryPref = findPreference("clear_history");
-        clearHistoryPref.setOnPreferenceClickListener(
-                new OnPreferenceClickListener() {
-
-                    @Override
-                    public boolean onPreferenceClick(Preference preference) {
-                        new AlertDialog.Builder(PreferencesActivity.this)
-                                .setTitle(R.string.clear_history)
-                                .setMessage(R.string.validation)
-                                .setIcon(android.R.drawable.ic_dialog_alert)
-                                .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-
-                                    @Override
-                                    public void onClick(DialogInterface dialog, int whichButton) {
-                                        DatabaseManager db = DatabaseManager.getInstance(getApplicationContext());
-                                        db.clearSearchhistory();
-                                    }
-                                })
-
-                                .setNegativeButton(android.R.string.cancel, null).show();
-                        return true;
-                    }
-                });
+        // Screen orientation
+        ListPreference screenOrientationPref = (ListPreference) findPreference("screen_orientation");
+        screenOrientationPref.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+            @Override
+            public boolean onPreferenceChange(Preference preference, Object newValue) {
+                final SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(PreferencesActivity.this);
+                SharedPreferences.Editor editor = sharedPrefs.edit();
+                editor.putString("screen_orientation_value", (String)newValue);
+                editor.commit();
+                return true;
+            }
+        });
 
         // Headset detection option
         CheckBoxPreference checkboxHS = (CheckBoxPreference) findPreference("enable_headset_detection");
@@ -112,13 +100,50 @@ public class PreferencesActivity extends PreferenceActivity implements OnSharedP
                     }
                 });
 
-        // steal remote control
-        Preference checkboxStealRC = findPreference("steal_remote_control");
+        // Steal remote control
+        Preference checkboxStealRC = findPreference("enable_steal_remote_control");
         checkboxStealRC.setOnPreferenceClickListener(
                 new OnPreferenceClickListener() {
                     @Override
                     public boolean onPreferenceClick(Preference preference) {
                         restartService(preference.getContext());
+                        return true;
+                    }
+                });
+
+        // Clear search history
+        Preference clearHistoryPref = findPreference("clear_history");
+        clearHistoryPref.setOnPreferenceClickListener(
+                new OnPreferenceClickListener() {
+
+                    @Override
+                    public boolean onPreferenceClick(Preference preference) {
+                        new AlertDialog.Builder(PreferencesActivity.this)
+                        .setTitle(R.string.clear_history)
+                        .setMessage(R.string.validation)
+                        .setIcon(android.R.drawable.ic_dialog_alert)
+                        .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+
+                            @Override
+                            public void onClick(DialogInterface dialog, int whichButton) {
+                                DatabaseManager db = DatabaseManager.getInstance(getApplicationContext());
+                                db.clearSearchhistory();
+                            }
+                        })
+
+                        .setNegativeButton(android.R.string.cancel, null).show();
+                        return true;
+                    }
+                });
+
+        // Clear media library
+        Preference clearMediaPref = findPreference("clear_media_db");
+        clearMediaPref
+                .setOnPreferenceClickListener(new OnPreferenceClickListener() {
+                    @Override
+                    public boolean onPreferenceClick(Preference preference) {
+                        DatabaseManager.getInstance(getBaseContext()).emptyDatabase();
+                        Toast.makeText(getBaseContext(), R.string.media_db_cleared, Toast.LENGTH_SHORT).show();
                         return true;
                     }
                 });
@@ -142,31 +167,19 @@ public class PreferencesActivity extends PreferenceActivity implements OnSharedP
             }
         });
 
-        // Screen Orientation
-        ListPreference screenOrientationPref = (ListPreference) findPreference("screen_orientation");
-        screenOrientationPref.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
-            @Override
-            public boolean onPreferenceChange(Preference preference, Object newValue) {
-                final SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(PreferencesActivity.this);
-                SharedPreferences.Editor editor = sharedPrefs.edit();
-                editor.putString("screen_orientation_value", (String)newValue);
-                editor.commit();
-                return true;
-            }
-        });
+        // Debug log activity
+        Preference debugLogsPref = findPreference("debug_logs");
+        debugLogsPref
+                .setOnPreferenceClickListener(new OnPreferenceClickListener() {
+                    @Override
+                    public boolean onPreferenceClick(Preference preference) {
+                        Intent intent = new Intent(getApplicationContext(), DebugLogActivity.class);
+                        startActivity(intent);
+                        return true;
+                    }
+                });
 
-        // Audio output
-        ListPreference aoutPref = (ListPreference) findPreference("aout");
-        int aoutEntriesId = Util.isGingerbreadOrLater() ? R.array.aouts : R.array.aouts_froyo;
-        int aoutEntriesIdValues = Util.isGingerbreadOrLater() ? R.array.aouts_values : R.array.aouts_values_froyo;
-        aoutPref.setEntries(aoutEntriesId);
-        aoutPref.setEntryValues(aoutEntriesIdValues);
-        if (aoutPref.getValue() == null)
-            aoutPref.setValue(Util.isGingerbreadOrLater()
-                ? "2"/*AOUT_OPENSLES*/
-                : "0"/*AOUT_AUDIOTRACK_JAVA*/);
-
-        // Attach debugging items
+        /*** Attach debugging items **/
         Preference quitAppPref = findPreference("quit_app");
         quitAppPref.setOnPreferenceClickListener(
                 new OnPreferenceClickListener() {
@@ -177,17 +190,17 @@ public class PreferencesActivity extends PreferenceActivity implements OnSharedP
                         return true;
                     }
                 });
-        Preference clearMediaPref = findPreference("clear_media_db");
-        clearMediaPref.setOnPreferenceClickListener(
-                new OnPreferenceClickListener() {
-
-                    @Override
-                    public boolean onPreferenceClick(Preference preference) {
-                        DatabaseManager.getInstance(getBaseContext()).emptyDatabase();
-                        Toast.makeText(getBaseContext(), R.string.media_db_cleared, Toast.LENGTH_SHORT).show();
-                        return true;
-                    }
-                });
+        // Audio output
+        ListPreference aoutPref = (ListPreference) findPreference("aout");
+        int aoutEntriesId = Util.isGingerbreadOrLater() ? R.array.aouts : R.array.aouts_froyo;
+        int aoutEntriesIdValues = Util.isGingerbreadOrLater() ? R.array.aouts_values : R.array.aouts_values_froyo;
+        aoutPref.setEntries(aoutEntriesId);
+        aoutPref.setEntryValues(aoutEntriesIdValues);
+        if (aoutPref.getValue() == null)
+            aoutPref.setValue(Util.isGingerbreadOrLater()
+                    ? "2"/*AOUT_OPENSLES*/
+                            : "0"/*AOUT_AUDIOTRACK_JAVA*/);
+        // Set locale
         EditTextPreference setLocalePref = (EditTextPreference) findPreference("set_locale");
         setLocalePref.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
 
@@ -198,19 +211,19 @@ public class PreferencesActivity extends PreferenceActivity implements OnSharedP
             }
         });
 
-        // SharedPreferences Listener to apply changes
+        /*** SharedPreferences Listener to apply changes ***/
         SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this);
         sharedPrefs.registerOnSharedPreferenceChangeListener(this);
     }
 
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-        if (key.equalsIgnoreCase("enable_iomx") ||
-            key.equalsIgnoreCase("subtitles_text_encoding") ||
-            key.equalsIgnoreCase("aout") ||
-            key.equalsIgnoreCase("enable_time_stretching_audio") ||
-            key.equalsIgnoreCase("chroma_format")) {
-                LibVLC.restart();
+        if(key.equalsIgnoreCase("enable_iomx")
+                || key.equalsIgnoreCase("subtitles_text_encoding")
+                || key.equalsIgnoreCase("aout")
+                || key.equalsIgnoreCase("enable_time_stretching_audio")
+                || key.equalsIgnoreCase("chroma_format")) {
+            LibVLC.restart();
         }
     }
 

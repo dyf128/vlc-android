@@ -25,7 +25,6 @@ import java.util.Map;
 
 import org.videolan.vlc.gui.video.VideoPlayerActivity;
 
-import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.preference.PreferenceManager;
@@ -47,6 +46,10 @@ public class LibVLC {
     private long mInternalMediaPlayerInstance = 0; // Read-only, reserved for JNI
     /** libvlc_media_list_t pointer */
     private long mMediaListInstance = 0; // Read-only, reserved for JNI
+
+    /** Buffer for VLC messages */
+    private StringBuffer mDebugLogBuffer;
+    private boolean mIsBufferingLog = false;
 
     private Aout mAout;
 
@@ -191,13 +194,13 @@ public class LibVLC {
      */
     private void init() throws LibVlcException {
         Log.v(TAG, "Initializing LibVLC");
+        mDebugLogBuffer = new StringBuffer();
         if (!mIsInitialized) {
             if(!Util.hasCompatibleCPU()) {
                 Log.e(TAG, Util.getErrorMsg());
                 throw new LibVlcException();
             }
-            Context context = VLCApplication.getAppContext();
-            SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(context);
+            SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(VLCApplication.getAppContext());
             nativeInit(pref.getBoolean("enable_verbose_mode", true));
             setEventManager(EventManager.getInstance());
             mIsInitialized = true;
@@ -329,6 +332,23 @@ public class LibVLC {
      * @note mLibVlcInstance should be 0 after a call to destroy()
      */
     private native void nativeDestroy();
+
+    /**
+     * Start buffering to the mDebugLogBuffer.
+     */
+    public native void startDebugBuffer();
+    public native void stopDebugBuffer();
+    public String getBufferContent() {
+        return mDebugLogBuffer.toString();
+    }
+
+    public void clearBuffer() {
+        mDebugLogBuffer.setLength(0);
+    }
+
+    public boolean isDebugBuffering() {
+        return mIsBufferingLog;
+    }
 
     /**
      * Read a media
@@ -471,7 +491,7 @@ public class LibVLC {
 
     public native int getVideoTracksCount();
 
-    public native String[] getSpuTrackDescription();
+    public native Map<Integer,String> getSpuTrackDescription();
 
     public native int getSpuTrack();
 

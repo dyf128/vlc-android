@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.videolan.vlc"
     android:installLocation="auto"
-    android:versionCode="90"
-    android:versionName="0.0.9" >
+    android:versionCode="1000"
+    android:versionName="0.1.0-git" >
 
     <uses-sdk
         android:minSdkVersion="7"
@@ -63,7 +63,7 @@
             android:label="@string/mediafiles"
             android:theme="@android:style/Theme" />
         <activity
-            android:name=".gui.video.VideoActivityGroup"
+            android:name=".gui.DebugLogActivity"
             android:theme="@android:style/Theme.NoTitleBar" />
         <activity
             android:name=".gui.video.VideoGridFragment"
@@ -379,9 +379,6 @@
         <activity
             android:name=".gui.audio.AudioListFragment"
             android:theme="@style/Theme.VLC"  />
-        <activity
-            android:name=".gui.audio.AudioActivityGroup"
-            android:theme="@android:style/Theme.NoTitleBar" />
         <activity
             android:name=".gui.audio.AudioPlayerActivity"
             android:theme="@android:style/Theme.NoTitleBar"

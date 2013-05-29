@@ -23,6 +23,7 @@ package org.videolan.vlc.gui;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
 import org.videolan.vlc.R;
 import org.videolan.vlc.Util;
@@ -32,6 +33,7 @@ import org.videolan.vlc.gui.video.VideoGridFragment;
 
 import android.graphics.drawable.Drawable;
 import android.support.v4.app.Fragment;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -62,6 +64,8 @@ public class SidebarAdapter extends BaseAdapter {
     private LayoutInflater mInflater;
     static final List<SidebarEntry> entries;
     private HashMap<String, Fragment> mFragments;
+    private HashMap<String, Boolean> mFragmentAdded;
+    private Semaphore mSemaphore;
 
     static {
         SidebarEntry entries2[] = {
@@ -78,6 +82,8 @@ public class SidebarAdapter extends BaseAdapter {
     public SidebarAdapter() {
         mInflater = LayoutInflater.from(VLCApplication.getAppContext());
         mFragments = new HashMap<String, Fragment>(entries.size());
+        mFragmentAdded = new HashMap<String, Boolean>(entries.size());
+        mSemaphore = new Semaphore(1, true);
     }
 
     @Override
@@ -132,6 +138,61 @@ public class SidebarAdapter extends BaseAdapter {
         }
         f.setRetainInstance(true);
         mFragments.put(id, f);
+        mFragmentAdded.put(id, false);
         return f;
+    }
+
+    /**
+     * Has the fragment already been added?
+     * Note: lock must be held prior to entering this function!
+     *
+     * @return true if already added
+     */
+    public boolean isFragmentAdded(String id) {
+        return mFragmentAdded.get(id);
+    }
+
+    /**
+     * Flags the fragment as added.
+     *
+     * @param id　ID of the fragment
+     */
+    public void setFragmentAdded(String id) {
+        mFragmentAdded.put(id, true);
+    }
+
+    /**
+     * Locks the semaphore before manipulating the added flag, since only one
+     * add operation is permitted.
+     *
+     * Remember to unlockSemaphore() when done.
+     */
+    public void lockSemaphore() {
+        mSemaphore.acquireUninterruptibly();
+    }
+
+    /**
+     * Release the semaphore when done.
+     */
+    public void unlockSemaphore() {
+        mSemaphore.release();
+    }
+
+    /**
+     * When Android has automatically recreated a fragment from the bundle state,
+     * use this function to 'restore' the recreated fragment into this sidebar
+     * adapter to prevent it from trying to create the same fragment again.
+     *
+     * @param id ID of the fragment
+     * @param f The fragment itself
+     */
+    public void restoreFragment(String id, Fragment f) {
+        if(f == null) {
+            Log.e(TAG, "Can't set null fragment for " + id + "!");
+            return;
+        }
+        mFragments.put(id, f);
+        mFragmentAdded.put(id, true);
+        // if Android added it, it's been implicitly added already...
     }
 }

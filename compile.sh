@@ -15,7 +15,7 @@ fi
 # try to detect NDK version
 REL=$(grep -o '^r[0-9]*.*' $ANDROID_NDK/RELEASE.TXT 2>/dev/null|cut -b2-)
 case "$REL" in
-    8?)
+    8?*)
         # we don't use 4.4.3 because it doesn't handle threads correctly.
         # TODO : clang?
         if test -d ${ANDROID_NDK}/toolchains/arm-linux-androideabi-4.7
@@ -74,11 +74,11 @@ export PLATFORM_SHORT_ARCH
 
 # Add the NDK toolchain to the PATH, needed both for contribs and for building
 # stub libraries
-NDK_TOOLCHAIN_PATH=${ANDROID_NDK}/toolchains/${PATH_HOST}-${GCCVER}/prebuilt/`uname|tr A-Z a-z`-x86/bin
+NDK_TOOLCHAIN_PATH=`echo ${ANDROID_NDK}/toolchains/${PATH_HOST}-${GCCVER}/prebuilt/\`uname|tr A-Z a-z\`-*/bin`
 export PATH=${NDK_TOOLCHAIN_PATH}:${PATH}
 
 # 1/ libvlc, libvlccore and its plugins
-TESTED_HASH=7018018
+TESTED_HASH=e8dc8779b
 if [ ! -d "vlc" ]; then
     echo "VLC source not found, cloning"
     git clone git://git.videolan.org/vlc.git vlc
@@ -137,6 +137,22 @@ EXTRA_CFLAGS="${EXTRA_CFLAGS} -O2"
 EXTRA_CFLAGS="${EXTRA_CFLAGS} -I${ANDROID_NDK}/sources/cxx-stl/gnu-libstdc++${CXXSTL}/include"
 EXTRA_CFLAGS="${EXTRA_CFLAGS} -I${ANDROID_NDK}/sources/cxx-stl/gnu-libstdc++${CXXSTL}/libs/${ANDROID_ABI}/include"
 
+MAKEFLAGS=
+if which nproc >/dev/null
+then
+MAKEFLAGS=-j`nproc`
+elif which sysctl >/dev/null
+then
+MAKEFLAGS=-j`sysctl -n machdep.cpu.thread_count`
+fi
+
+export PATH=`pwd`/extras/tools/build/bin:$PATH
+echo "Building tools"
+cd extras/tools
+./bootstrap
+make $MAKEFLAGS
+cd ../..
+
 echo "Building the contribs"
 mkdir -p contrib/android
 cd contrib/android
@@ -178,12 +194,6 @@ else
     OPTS="--enable-debug"
 fi
 
-MAKEFLAGS=
-if which nproc >/dev/null
-then
-MAKEFLAGS=-j`nproc`
-fi
-
 echo "EXTRA_CFLAGS= -g ${EXTRA_CFLAGS}" >> config.mak
 export VLC_EXTRA_CFLAGS="${EXTRA_CFLAGS}"
 
@@ -192,11 +202,16 @@ make $MAKEFLAGS
 
 cd ../.. && mkdir -p android && cd android
 
-echo "Bootstraping"
-../bootstrap
-
-echo "Configuring"
-../../configure.sh $OPTS
+if [ $# -eq 1 ] && [ "$1" = "jni" ]; then
+    CLEAN="jniclean"
+    RELEASEFLAG="vlc-android/obj/local/armeabi-v7a/libvlcjni.so"
+else
+    CLEAN="distclean"
+    echo "Bootstraping"
+    ../bootstrap
+    echo "Configuring"
+    ../../configure.sh $OPTS
+fi
 
 echo "Building"
 make $MAKEFLAGS
@@ -214,7 +229,7 @@ export ANDROID_SYS_HEADERS_ICS=${PWD}/android-headers-ics
 export ANDROID_LIBS=${PWD}/android-libs
 export VLC_BUILD_DIR=vlc/android
 
-make distclean
+make $CLEAN
 make -j1 TARGET_TUPLE=$TARGET_TUPLE PLATFORM_SHORT_ARCH=$PLATFORM_SHORT_ARCH CXXSTL=$CXXSTL $RELEASEFLAG
 
 # 3/ Environment script

@@ -24,8 +24,6 @@ import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
 import java.net.URLDecoder;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Map;
 
 import org.videolan.vlc.AudioServiceController;
@@ -115,7 +113,8 @@ public class VideoPlayerActivity extends Activity {
     private View mOverlayHeader;
     private View mOverlayLock;
     private View mOverlayOption;
-    private View mOverlay;
+    private View mOverlayProgress;
+    private View mOverlayInterface;
     private static final int OVERLAY_TIMEOUT = 4000;
     private static final int OVERLAY_INFINITE = 3600000;
     private static final int FADE_OUT = 1;
@@ -143,7 +142,7 @@ public class VideoPlayerActivity extends Activity {
     private ImageButton mSize;
     private boolean mIsLocked = false;
     private int mLastAudioTrack = -1;
-    private int mLastSpuTrack = -1;
+    private int mLastSpuTrack = -2;
 
     /**
      * For uninterrupted switching between audio and video mode
@@ -174,8 +173,7 @@ public class VideoPlayerActivity extends Activity {
 
     // Tracks & Subtitles
     private Map<Integer,String> mAudioTracksList;
-    private String[] mSubtitleTracksLibVLC;
-    private ArrayList<String> mSubtitleTracksList;
+    private Map<Integer,String> mSubtitleTracksList;
 
     // Advance Function
     private AdvFuncDialog mAdvFuncDialog;
@@ -207,7 +205,8 @@ public class VideoPlayerActivity extends Activity {
         mOverlayHeader = findViewById(R.id.player_overlay_header);
         mOverlayLock = findViewById(R.id.lock_overlay);
         mOverlayOption = findViewById(R.id.option_overlay);
-        mOverlay = findViewById(R.id.player_overlay);
+        mOverlayProgress = findViewById(R.id.progress_overlay);
+        mOverlayInterface = findViewById(R.id.interface_overlay);
 
         /* header */
         mTitle = (TextView) findViewById(R.id.player_overlay_title);
@@ -224,7 +223,7 @@ public class VideoPlayerActivity extends Activity {
         mInfo = (TextView) findViewById(R.id.player_overlay_info);
 
         mEnableWheelbar = pref.getBoolean("enable_wheel_bar", false);
-        mEnableBrightnessGesture = pref.getBoolean("enable_gesture_brightness", true);
+        mEnableBrightnessGesture = pref.getBoolean("enable_brightness_gesture", true);
         mScreenOrientation = Integer.valueOf(
                 pref.getString("screen_orientation_value", "4" /*SCREEN_ORIENTATION_SENSOR*/));
 
@@ -515,6 +514,9 @@ public class VideoPlayerActivity extends Activity {
             setRequestedOrientation(getScreenOrientation());
         showInfo(R.string.locked, 1000);
         mLock.setBackgroundResource(R.drawable.ic_lock_glow);
+        mTime.setEnabled(false);
+        mSeekbar.setEnabled(false);
+        mLength.setEnabled(false);
         hideOverlay(true);
     }
 
@@ -526,6 +528,9 @@ public class VideoPlayerActivity extends Activity {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
         showInfo(R.string.unlocked, 1000);
         mLock.setBackgroundResource(R.drawable.ic_lock);
+        mTime.setEnabled(true);
+        mSeekbar.setEnabled(true);
+        mLength.setEnabled(true);
         mShowing = false;
         showOverlay();
     }
@@ -617,6 +622,10 @@ public class VideoPlayerActivity extends Activity {
                 case EventManager.MediaPlayerPositionChanged:
                     //don't spam the logs
                     break;
+                case EventManager.MediaPlayerEncounteredError:
+                    Log.i(TAG, "MediaPlayerEncounteredError");
+                    activity.encounteredError();
+                    break;
                 default:
                     Log.e(TAG, String.format("Event not handled (0x%x)", msg.getData().getInt("event")));
                     break;
@@ -672,6 +681,21 @@ public class VideoPlayerActivity extends Activity {
         finish();
     }
 
+    private void encounteredError() {
+        /* Encountered Error, exit player with a message */
+        AlertDialog dialog = new AlertDialog.Builder(VideoPlayerActivity.this)
+        .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int id) {
+                finish();
+            }
+        })
+        .setTitle(R.string.encountered_error_title)
+        .setMessage(R.string.encountered_error_message)
+        .create();
+        dialog.show();
+    }
+
     private void handleVout(Message msg) {
         if (msg.getData().getInt("data") == 0 && !mEndReached) {
             /* Video track lost, open in audio mode */
@@ -693,8 +717,12 @@ public class VideoPlayerActivity extends Activity {
             dw = dh;
             dh = d;
         }
-        if (dw * dh == 0)
+
+        // sanity check
+        if (dw * dh == 0 || mVideoWidth * mVideoHeight == 0) {
+            Log.e(TAG, "Invalid surface size");
             return;
+        }
 
         // compute the aspect ratio
         double ar, vw;
@@ -804,9 +832,9 @@ public class VideoPlayerActivity extends Activity {
             break;
 
         case MotionEvent.ACTION_MOVE:
-            // No audio/brightness action if coef < 2
+            // No volume/brightness action if coef < 2
             if (coef > 2) {
-                // Audio (Up or Down - Right side)
+                // Volume (Up or Down - Right side)
                 if (!mEnableBrightnessGesture || mTouchX > (screen.widthPixels / 2)){
                     doVolumeTouch(y_changed);
                 }
@@ -814,6 +842,12 @@ public class VideoPlayerActivity extends Activity {
                 if (mEnableBrightnessGesture && mTouchX < (screen.widthPixels / 2)){
                     doBrightnessTouch(y_changed);
                 }
+                // Extend the overlay for a little while, so that it doesn't
+                // disappear on the user if more adjustment is needed. This
+                // is because on devices with soft navigation (e.g. Galaxy
+                // Nexus), gestures can't be made without activating the UI.
+                if(Util.hasNavBar())
+                    showOverlay();
             }
             // Seek (Right or Left move)
             doSeekTouch(coef, xgesturesize, false);
@@ -873,7 +907,7 @@ public class VideoPlayerActivity extends Activity {
             mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC,
                     vol, 0);
             mIsAudioOrBrightnessChanged = true;
-            showInfo(getString(R.string.volume) + Integer.toString(vol),1000);
+            showInfo(getString(R.string.volume) + '\u00A0' + Integer.toString(vol),1000);
         }
     }
 
@@ -991,18 +1025,37 @@ public class VideoPlayerActivity extends Activity {
     private final OnClickListener mSubtitlesListener = new OnClickListener() {
         @Override
         public void onClick(View v) {
-            String[] arrList = new String[mSubtitleTracksList.size()];
-            arrList = mSubtitleTracksList.toArray(arrList);
+            final String[] arrList = new String[mSubtitleTracksList.size()];
+            int i = 0;
+            int listPosition = 0;
+            for(Map.Entry<Integer,String> entry : mSubtitleTracksList.entrySet()) {
+                arrList[i] = entry.getValue();
+                // map the track position to the list position
+                if(entry.getKey() == mLibVLC.getSpuTrack())
+                    listPosition = i;
+                i++;
+            }
+
             AlertDialog dialog = new AlertDialog.Builder(VideoPlayerActivity.this)
             .setTitle(R.string.track_text)
-            .setSingleChoiceItems(arrList, mLibVLC.getSpuTrack(), new DialogInterface.OnClickListener() {
+            .setSingleChoiceItems(arrList, listPosition, new DialogInterface.OnClickListener() {
                 @Override
-                public void onClick(DialogInterface dialog, int position) {
+                public void onClick(DialogInterface dialog, int listPosition) {
+                    int trackID = -2;
+                    // Reverse map search...
+                    for(Map.Entry<Integer, String> entry : mSubtitleTracksList.entrySet()) {
+                        if(arrList[listPosition].equals(entry.getValue())) {
+                            trackID = entry.getKey();
+                            break;
+                        }
+                    }
+                    if(trackID < -1) return;
+
                     DatabaseManager.getInstance(VideoPlayerActivity.this).updateMedia(
                             mLocation,
                             DatabaseManager.mediaColumn.MEDIA_SPUTRACK,
-                            position);
-                    mLibVLC.setSpuTrack(position);
+                            trackID);
+                    mLibVLC.setSpuTrack(trackID);
                     dialog.dismiss();
                 }
             })
@@ -1172,9 +1225,10 @@ public class VideoPlayerActivity extends Activity {
             if (!mIsLocked) {
                 mOverlayHeader.setVisibility(View.VISIBLE);
                 mOverlayOption.setVisibility(View.VISIBLE);
-                mOverlay.setVisibility(View.VISIBLE);
+                mOverlayInterface.setVisibility(View.VISIBLE);
                 dimStatusBar(false);
             }
+            mOverlayProgress.setVisibility(View.VISIBLE);
         }
         Message msg = mHandler.obtainMessage(FADE_OUT);
         if (timeout != 0) {
@@ -1196,12 +1250,14 @@ public class VideoPlayerActivity extends Activity {
                 mOverlayLock.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
                 mOverlayHeader.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
                 mOverlayOption.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
-                mOverlay.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
+                mOverlayProgress.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
+                mOverlayInterface.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
             }
             mOverlayLock.setVisibility(View.INVISIBLE);
             mOverlayHeader.setVisibility(View.INVISIBLE);
             mOverlayOption.setVisibility(View.INVISIBLE);
-            mOverlay.setVisibility(View.INVISIBLE);
+            mOverlayProgress.setVisibility(View.INVISIBLE);
+            mOverlayInterface.setVisibility(View.INVISIBLE);
             mShowing = false;
             dimStatusBar(true);
         }
@@ -1258,9 +1314,9 @@ public class VideoPlayerActivity extends Activity {
             mLibVLC.setAudioTrack(mLastAudioTrack);
             mLastAudioTrack = -1;
         }
-        if (mLastSpuTrack >= 0) {
+        if (mLastSpuTrack >= -1) {
             mLibVLC.setSpuTrack(mLastSpuTrack);
-            mLastSpuTrack = -1;
+            mLastSpuTrack = -2;
         }
     }
 
@@ -1276,13 +1332,11 @@ public class VideoPlayerActivity extends Activity {
                 mAudioTrack.setOnClickListener(null);
             }
         }
-        if (mSubtitleTracksLibVLC == null) {
-            mSubtitleTracksLibVLC = mLibVLC.getSpuTrackDescription();
-            if (mSubtitleTracksLibVLC != null && mSubtitleTracksLibVLC.length > 0) {
-                mSubtitleTracksList = new ArrayList<String>(Arrays.asList(mSubtitleTracksLibVLC));
+        if (mSubtitleTracksList == null) {
+            if (mLibVLC.getSpuTracksCount() > 0) {
+                mSubtitleTracksList = mLibVLC.getSpuTrackDescription();
                 mSubtitle.setOnClickListener(mSubtitlesListener);
                 mSubtitle.setVisibility(View.VISIBLE);
-
             }
             else {
                 mSubtitle.setVisibility(View.GONE);
@@ -1322,13 +1376,15 @@ public class VideoPlayerActivity extends Activity {
         if (getIntent().getAction() != null
                 && getIntent().getAction().equals(Intent.ACTION_VIEW)) {
             /* Started from external application */
-            if(getIntent().getData().getScheme().equals("content")) {
+            if (getIntent().getData() != null
+                    && getIntent().getData().getScheme() != null
+                    && getIntent().getData().getScheme().equals("content")) {
                 if(getIntent().getData().getHost().equals("media")) {
                     // Media URI
                     Cursor cursor = managedQuery(getIntent().getData(), new String[]{ MediaStore.Video.Media.DATA }, null, null, null);
                     int column_index = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA);
-                    cursor.moveToFirst();
-                    mLocation = Util.PathToURI(cursor.getString(column_index));
+                    if (cursor.moveToFirst())
+                        mLocation = Util.PathToURI(cursor.getString(column_index));
                 } else {
                     // other content-based URI (probably file pickers)
                     mLocation = getIntent().getData().getPath();

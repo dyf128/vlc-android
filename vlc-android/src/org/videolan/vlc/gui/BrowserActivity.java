@@ -31,8 +31,6 @@ import org.videolan.vlc.Media;
 import org.videolan.vlc.R;
 import org.videolan.vlc.Util;
 
-import android.view.MenuItem;
-
 import android.app.AlertDialog;
 import android.app.ListActivity;
 import android.content.BroadcastReceiver;
@@ -44,9 +42,10 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
-import android.widget.AdapterView.AdapterContextMenuInfo;
 import android.view.KeyEvent;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView.AdapterContextMenuInfo;
 import android.widget.EditText;
 import android.widget.ListView;
 
@@ -59,7 +58,7 @@ public class BrowserActivity extends ListActivity {
 
     private BrowserAdapter mAdapter;
     private File mCurrentDir;
-    private final Stack<ScrollState> mScollStates = new Stack<ScrollState>();
+    private final Stack<ScrollState> mScrollStates = new Stack<ScrollState>();
     private String mRoots[];
 
     private class ScrollState {
@@ -105,7 +104,7 @@ public class BrowserActivity extends ListActivity {
         super.onDestroy();
         unregisterReceiver(messageReceiver);
         mAdapter.clear();
-        mScollStates.clear();
+        mScrollStates.clear();
     }
 
     @Override
@@ -203,7 +202,7 @@ public class BrowserActivity extends ListActivity {
             // store scroll state
             int index = l.getFirstVisiblePosition();
             int top = l.getChildAt(0).getTop();
-            mScollStates.push(new ScrollState(index, top));
+            mScrollStates.push(new ScrollState(index, top));
             openDir(file);
         } else {
             Util.toaster(this, R.string.nosubdirectory);
@@ -233,9 +232,11 @@ public class BrowserActivity extends ListActivity {
             } else {
                 openDir(mCurrentDir.getParentFile());
                 // restore scroll state
-                ScrollState ss = mScollStates.pop();
-                getListView().setSelectionFromTop(ss.index, ss.top);
-                return true;
+                if (mScrollStates.size() > 0) {
+                    ScrollState ss = mScrollStates.pop();
+                    getListView().setSelectionFromTop(ss.index, ss.top);
+                    return true;
+                }
             }
         }
         return super.onKeyDown(keyCode, event);

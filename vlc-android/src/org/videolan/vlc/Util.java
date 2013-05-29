@@ -45,6 +45,7 @@ import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.telephony.TelephonyManager;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.View;
@@ -83,6 +84,9 @@ public class Util {
     }
 
     public static String PathToURI(String path) {
+        if(path == null) {
+            throw new NullPointerException("Cannot convert null path!");
+        }
         return LibVLC.nativeToURI(path);
     }
 
@@ -269,6 +273,12 @@ public class Util {
     {
         // If already checked return cached result
         if(errorMsg != null) return isCompatible;
+
+        if(VLCApplication.getAppResources() == null) {
+            Log.e(TAG, "WARNING: Unable to get app resources; cannot check device ABI!");
+            Log.e(TAG, "WARNING: Cannot guarantee correct ABI for this build (may crash)!");
+            return true;
+        }
 
         Properties properties = new Properties();
         try {

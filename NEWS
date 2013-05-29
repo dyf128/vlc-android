@@ -1,3 +1,30 @@
+Changes between 0.0.11 and 0.1.0-git:
+----------------------------------
+
+
+Changes between 0.0.10 and 0.0.11:
+----------------------------------
+Main Application:
+ * Numerous fixes for recurrent crashes
+ * Better debugging log facility
+ * Show seek position when locked in fullscreen mode
+ * Avoid running thumbnailer when playing audio only
+ * Improve the overlay fading after a gesture
+
+Translations:
+ * Initial Burmese, Danish, and Serbian translations
+ * Updates to the Bosnian, Catalan, Croatian, Czech, Danish, Dutch,
+   Estonian, German, Italian, Japanese, Khmer, Norwegian Bokmål, Polish,
+   Portuguese, Russian, Slovak, Spanish, Thai, Turkish, Ukrainian, Urdu,
+   Simplified Chinese, and Traditional Chinese translations
+
+
+Changes between 0.0.9 and 0.0.10:
+---------------------------------
+ * Subs selection
+ * Fixes for 2 frequent crashes
+
+
 Changes between 0.0.8 and 0.0.9:
 --------------------------------
 Core:

@@ -206,6 +206,7 @@ static void releaseMediaPlayer(JNIEnv *env, jobject thiz)
 JavaVM *myVm;
 
 static jobject eventManagerInstance = NULL;
+static jobject debugBufferInstance = NULL;
 
 static pthread_mutex_t vout_android_lock;
 static void *vout_android_surf = NULL;
@@ -240,17 +241,14 @@ void jni_SetAndroidSurfaceSize(int width, int height, int sar_num, int sar_den)
 static void vlc_event_callback(const libvlc_event_t *ev, void *data)
 {
     JNIEnv *env;
-    JavaVM *myVm = data;
 
     bool isAttached = false;
 
     if (eventManagerInstance == NULL)
         return;
 
-    int status = (*myVm)->GetEnv(myVm, (void**) &env, JNI_VERSION_1_2);
-    if (status < 0) {
-        status = (*myVm)->AttachCurrentThread(myVm, &env, NULL);
-        if (status < 0)
+    if ((*myVm)->GetEnv(myVm, (void**) &env, JNI_VERSION_1_2) < 0) {
+        if ((*myVm)->AttachCurrentThread(myVm, &env, NULL) < 0)
             return;
         isAttached = true;
     }
@@ -368,7 +366,47 @@ void Java_org_videolan_vlc_LibVLC_detachSurface(JNIEnv *env, jobject thiz) {
     pthread_mutex_unlock(&vout_android_lock);
 }
 
-static void debug_log(void *data, int level, const char *fmt, va_list ap)
+// FIXME: use atomics
+static bool verbosity;
+static bool buffer_logging;
+
+static void debug_buffer_log(void *data, int level, const char *fmt, va_list ap)
+{
+    bool isAttached = false;
+    JNIEnv *env = NULL;
+
+    if ((*myVm)->GetEnv(myVm, (void**) &env, JNI_VERSION_1_2) < 0) {
+        if ((*myVm)->AttachCurrentThread(myVm, &env, NULL) < 0)
+            return;
+        isAttached = true;
+    }
+
+    /* Prepare message string */
+    char* psz_fmt_newline = malloc(strlen(fmt) + 2);
+    if(!psz_fmt_newline)
+        return;
+    strcpy(psz_fmt_newline, fmt);
+    strcat(psz_fmt_newline, "\n");
+    char* psz_msg = NULL;
+    int res = vasprintf(&psz_msg, psz_fmt_newline, ap);
+    free(psz_fmt_newline);
+    if(res < 0)
+        return;
+
+    jobject buffer = debugBufferInstance;
+    jclass buffer_class = (*env)->FindClass(env, "java/lang/StringBuffer");
+    jmethodID bufferAppendID = (*env)->GetMethodID(env, buffer_class, "append", "(Ljava/lang/String;)Ljava/lang/StringBuffer;");
+
+    jstring message = (*env)->NewStringUTF(env, psz_msg);
+    (*env)->CallObjectMethod(env, buffer, bufferAppendID, message);
+    (*env)->DeleteLocalRef(env, message);
+    free(psz_msg);
+
+    if (isAttached)
+        (*myVm)->DetachCurrentThread(myVm);
+}
+
+static void debug_log(void *data, int level, const libvlc_log_t *ctx, const char *fmt, va_list ap)
 {
     bool *verbose = data;
 
@@ -384,20 +422,58 @@ static void debug_log(void *data, int level, const char *fmt, va_list ap)
     if (level >= LIBVLC_DEBUG && level <= LIBVLC_ERROR)
         prio = priority[level];
 
+    if (buffer_logging) {
+        va_list aq;
+        va_copy(aq, ap);
+        debug_buffer_log(data, level, fmt, aq);
+        va_end(aq);
+    }
+
     if (!*verbose && prio < ANDROID_LOG_ERROR)
         return;
 
     __android_log_vprint(prio, "VLC", fmt, ap);
 }
 
-static libvlc_log_subscriber_t debug_subscriber;
-static bool verbosity;
-
 void Java_org_videolan_vlc_LibVLC_changeVerbosity(JNIEnv *env, jobject thiz, jboolean verbose)
 {
     verbosity = verbose;
-    libvlc_log_unsubscribe(&debug_subscriber);
-    libvlc_log_subscribe(&debug_subscriber, debug_log, &verbosity);
+}
+
+void Java_org_videolan_vlc_LibVLC_startDebugBuffer(JNIEnv *env, jobject thiz)
+{
+    jclass libVLC_class = (*env)->FindClass(env, "org/videolan/vlc/LibVLC");
+    jmethodID getInstance = (*env)->GetStaticMethodID(env, libVLC_class, "getInstance", "()Lorg/videolan/vlc/LibVLC;");
+    jobject libvlcj = (*env)->CallStaticObjectMethod(env, libVLC_class, getInstance);
+
+    jfieldID bufferID = (*env)->GetFieldID(env, libVLC_class, "mDebugLogBuffer", "Ljava/lang/StringBuffer;");
+    jobject buffer = (*env)->GetObjectField(env, libvlcj, bufferID);
+
+    debugBufferInstance = (*env)->NewGlobalRef(env, buffer);
+    (*env)->DeleteLocalRef(env, buffer);
+
+    jfieldID buffer_flag = (*env)->GetFieldID(env, libVLC_class, "mIsBufferingLog", "Z");
+    (*env)->SetBooleanField(env, libvlcj, buffer_flag, JNI_TRUE);
+
+    (*env)->DeleteLocalRef(env, libVLC_class);
+    (*env)->DeleteLocalRef(env, libvlcj);
+    buffer_logging = true;
+}
+
+void Java_org_videolan_vlc_LibVLC_stopDebugBuffer(JNIEnv *env, jobject thiz)
+{
+    buffer_logging = false;
+    jclass libVLC_class = (*env)->FindClass(env, "org/videolan/vlc/LibVLC");
+    jmethodID getInstance = (*env)->GetStaticMethodID(env, libVLC_class, "getInstance", "()Lorg/videolan/vlc/LibVLC;");
+    jobject libvlcj = (*env)->CallStaticObjectMethod(env, libVLC_class, getInstance);
+
+    (*env)->DeleteGlobalRef(env, debugBufferInstance);
+
+    jfieldID buffer_flag = (*env)->GetFieldID(env, libVLC_class, "mIsBufferingLog", "Z");
+    (*env)->SetBooleanField(env, libvlcj, buffer_flag, JNI_FALSE);
+
+    (*env)->DeleteLocalRef(env, libVLC_class);
+    (*env)->DeleteLocalRef(env, libvlcj);
 }
 
 void Java_org_videolan_vlc_LibVLC_nativeInit(JNIEnv *env, jobject thiz, jboolean verbose)
@@ -419,9 +495,6 @@ void Java_org_videolan_vlc_LibVLC_nativeInit(JNIEnv *env, jobject thiz, jboolean
     jstring subsencoding = (*env)->CallObjectMethod(env, thiz, methodId);
     const char *subsencodingstr = (*env)->GetStringUTFChars(env, subsencoding, 0);
     LOGD("Subtitle encoding set to \"%s\"", subsencodingstr);
-
-    verbosity = verbose;
-    libvlc_log_subscribe(&debug_subscriber, debug_log, &verbosity);
 
     /* Don't add any invalid options, otherwise it causes LibVLC to crash */
     const char *argv[] = {
@@ -452,6 +525,9 @@ void Java_org_videolan_vlc_LibVLC_nativeInit(JNIEnv *env, jobject thiz, jboolean
     }
 
     LOGI("LibVLC initialized: %p", instance);
+
+    verbosity = verbose;
+    libvlc_log_set(instance, debug_log, &verbosity);
 
     /* Initialize media list (a.k.a. playlist/history) */
     libvlc_media_list_t* pointer = libvlc_media_list_new( instance );
@@ -500,8 +576,8 @@ void Java_org_videolan_vlc_LibVLC_nativeDestroy(JNIEnv *env, jobject thiz)
         return; // Already destroyed
 
     libvlc_instance_t *instance = (libvlc_instance_t*)(intptr_t) libVlcInstance;
+    libvlc_log_unset(instance);
     libvlc_release(instance);
-    libvlc_log_unsubscribe(&debug_subscriber);
 
     setLong(env, thiz, "mLibVlcInstance", 0);
 }
@@ -609,7 +685,8 @@ static void create_player_and_play(JNIEnv* env, jobject thiz,
         libvlc_MediaPlayerEndReached,
         libvlc_MediaPlayerStopped,
         libvlc_MediaPlayerVout,
-        libvlc_MediaPlayerPositionChanged
+        libvlc_MediaPlayerPositionChanged,
+        libvlc_MediaPlayerEncounteredError
     };
     for(int i = 0; i < (sizeof(mp_events) / sizeof(*mp_events)); i++)
         libvlc_event_attach(ev, mp_events[i], vlc_event_callback, myVm);
@@ -1106,28 +1183,45 @@ jint Java_org_videolan_vlc_LibVLC_getVideoTracksCount(JNIEnv *env, jobject thiz)
     return -1;
 }
 
-jobjectArray Java_org_videolan_vlc_LibVLC_getSpuTrackDescription(JNIEnv *env, jobject thiz)
+jobject Java_org_videolan_vlc_LibVLC_getSpuTrackDescription(JNIEnv *env, jobject thiz)
 {
     libvlc_media_player_t *mp = getMediaPlayer(env, thiz);
     if (!mp)
         return NULL;
 
     int i_nbTracks = libvlc_video_get_spu_count(mp);
-    jobjectArray array = (*env)->NewObjectArray(env, i_nbTracks,
-            (*env)->FindClass(env, "java/lang/String"),
-            NULL);
+    jclass mapClass = (*env)->FindClass(env, "java/util/Map");
+    jclass hashMapClass = (*env)->FindClass(env, "java/util/HashMap");
+    jmethodID mapPut = (*env)->GetMethodID(env, mapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    /*
+     * "What are you building? Lay your hand on it. Where is it?"
+     * We need a concrete map to start
+     */
+    jmethodID mapInit = (*env)->GetMethodID(env, hashMapClass, "<init>", "()V");
+    jclass integerCls = (*env)->FindClass(env, "java/lang/Integer");
+    jmethodID integerConstructor = (*env)->GetMethodID(env, integerCls, "<init>", "(I)V");
+
+    jobject spuTrackMap = (*env)->NewObject(env, hashMapClass, mapInit);
 
     libvlc_track_description_t *first = libvlc_video_get_spu_description(mp);
     libvlc_track_description_t *desc = first;
     unsigned i;
     for (i = 0; i < i_nbTracks; ++i)
     {
+        // store audio track ID and name in a map as <ID, Track Name>
+        jobject track_id = (*env)->NewObject(env, integerCls, integerConstructor, desc->i_id);
         jstring name = (*env)->NewStringUTF(env, desc->psz_name);
-        (*env)->SetObjectArrayElement(env, array, i, name);
+        (*env)->CallObjectMethod(env, spuTrackMap, mapPut, track_id, name);
         desc = desc->p_next;
     }
     libvlc_track_description_list_release(first);
-    return array;
+
+    // Clean up local references
+    (*env)->DeleteLocalRef(env, mapClass);
+    (*env)->DeleteLocalRef(env, hashMapClass);
+    (*env)->DeleteLocalRef(env, integerCls);
+
+    return spuTrackMap;
 }
 
 jint Java_org_videolan_vlc_LibVLC_getSpuTracksCount(JNIEnv *env, jobject thiz)
